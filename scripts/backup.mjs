@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { writeFileSync, mkdirSync, existsSync } from 'fs';
-import { join } from 'path';
+import ws from 'ws';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SECRET = process.env.SUPABASE_SECRET;
@@ -10,7 +10,9 @@ if (!SUPABASE_URL || !SUPABASE_SECRET) {
   process.exit(1);
 }
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SECRET);
+const supabase = createClient(SUPABASE_URL, SUPABASE_SECRET, {
+  realtime: { transport: ws },
+});
 
 const tables = ['agents', 'customer_groups', 'nominees', 'companies', 'accounts'];
 
