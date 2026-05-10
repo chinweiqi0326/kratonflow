@@ -1,0 +1,26 @@
+{
+  "date": "2026-05-10",
+  "timestamp": "2026-05-10T17:53:25.583Z",
+  "tables": {
+    "agents": {
+      "rows": 3,
+      "file": "agents.json"
+    },
+    "customer_groups": {
+      "rows": 2,
+      "file": "customer_groups.json"
+    },
+    "nominees": {
+      "rows": 8,
+      "file": "nominees.json"
+    },
+    "companies": {
+      "rows": 16,
+      "file": "companies.json"
+    },
+    "accounts": {
+      "rows": 48,
+      "file": "accounts.json"
+    }
+  }
+}
