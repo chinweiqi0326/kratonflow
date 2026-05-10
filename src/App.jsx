@@ -26,6 +26,9 @@ function dbToApp(nominee, companies = [], accounts = []) {
         blownDate: a.blown_date || "",
         monthlyFee: Number(a.monthly_fee) || 0,
         payout: Number(a.payout) || 0,
+        contractMonths: Number(a.contract_months) || 6,
+        guaranteedMonths: Number(a.guaranteed_months) || 6,
+        compensationPrice: Number(a.compensation_price) || 15000,
         contractEnd: a.contract_end || "",
         notes: a.notes || "",
         monthlyNetPrice: a.monthly_net_price || {},
@@ -125,6 +128,9 @@ async function syncCompanies(nomineeId, companies) {
         blown_date: a.blownDate || null,
         monthly_fee: a.monthlyFee || 0,
         payout: a.payout || 0,
+        contract_months: a.contractMonths || 6,
+        guaranteed_months: a.guaranteedMonths || 6,
+        compensation_price: a.compensationPrice || 15000,
         contract_end: a.contractEnd || null,
         notes: a.notes || "",
         monthly_net_price: a.monthlyNetPrice || {},
@@ -750,9 +756,9 @@ function NomineeDetail({ nomineeId, nominees, onNavigate, onUpdate }) {
       const today = new Date().toISOString().split("T")[0];
       const defaultPayout = n.nomineeType === "old" ? 7500 : 13000;
       const defaultAccounts = (companyNum) => [
-        { id: `ac_${Date.now()}_${companyNum}_1`, bank: "KBank", status: "pending", openDate: "", monthlyFee: 8000, payout: defaultPayout, contractEnd: "", notes: "", blownDate: "", prorateClaimedMonths: {} },
-        { id: `ac_${Date.now()}_${companyNum}_2`, bank: "SCB", status: "pending", openDate: "", monthlyFee: 8000, payout: defaultPayout, contractEnd: "", notes: "", blownDate: "", prorateClaimedMonths: {} },
-        { id: `ac_${Date.now()}_${companyNum}_3`, bank: "KTB", status: "pending", openDate: "", monthlyFee: 8000, payout: defaultPayout, contractEnd: "", notes: "", blownDate: "", prorateClaimedMonths: {} },
+        { id: `ac_${Date.now()}_${companyNum}_1`, bank: "KBank", status: "pending", openDate: "", monthlyFee: 8000, payout: defaultPayout, contractMonths: 6, guaranteedMonths: 6, compensationPrice: 15000, contractEnd: "", notes: "", blownDate: "", prorateClaimedMonths: {} },
+        { id: `ac_${Date.now()}_${companyNum}_2`, bank: "SCB", status: "pending", openDate: "", monthlyFee: 8000, payout: defaultPayout, contractMonths: 6, guaranteedMonths: 6, compensationPrice: 15000, contractEnd: "", notes: "", blownDate: "", prorateClaimedMonths: {} },
+        { id: `ac_${Date.now()}_${companyNum}_3`, bank: "KTB", status: "pending", openDate: "", monthlyFee: 8000, payout: defaultPayout, contractMonths: 6, guaranteedMonths: 6, compensationPrice: 15000, contractEnd: "", notes: "", blownDate: "", prorateClaimedMonths: {} },
       ];
       updates.companies = [
         {
@@ -1073,6 +1079,7 @@ function NomineeDetail({ nomineeId, nominees, onNavigate, onUpdate }) {
         <AddAccountModal
           companyId={showAddAccount}
           existingAccounts={(companies.find(c => c.id === showAddAccount)?.accounts) || []}
+          nomineeGroup={n.group}
           onClose={() => setShowAddAccount(null)}
           onSave={(account) => addAccount(showAddAccount, account)}
         />
@@ -1086,6 +1093,7 @@ function NomineeDetail({ nomineeId, nominees, onNavigate, onUpdate }) {
         return (
           <EditAccountModal
             account={account}
+            nomineeGroup={n.group}
             onClose={() => setEditingAccount(null)}
             onSave={(updates) => {
               updateAccount(editingAccount.companyId, editingAccount.accountId, updates);
@@ -1345,6 +1353,11 @@ function AccountRow({ account, onEdit, onRemove }) {
           {account.blownDate && <span style={{ color: C.red }}>💥 Blown: {account.blownDate}</span>}
           {account.monthlyFee > 0 && <span style={{ color: C.gold }}>฿{account.monthlyFee.toLocaleString()}/mo</span>}
           {account.payout > 0 && <span style={{ color: C.orange }}>Payout ฿{account.payout.toLocaleString()}</span>}
+          {(account.contractMonths || account.guaranteedMonths) && (
+            <span style={{ color: C.textDim }}>
+              📋 {account.contractMonths || 6}mo · 保{account.guaranteedMonths || 6}mo
+            </span>
+          )}
         </div>
         {account.notes && (
           <div style={{ fontSize: 10, color: C.textDim, marginTop: 3, fontStyle: "italic" }}>
@@ -1414,7 +1427,8 @@ function AddCompanyModal({ onClose, onSave, nomineeName }) {
 }
 
 // ============ ADD ACCOUNT MODAL ============
-function AddAccountModal({ companyId, existingAccounts, onClose, onSave }) {
+function AddAccountModal({ companyId, existingAccounts, nomineeGroup, onClose, onSave }) {
+  const isGroupB = nomineeGroup === "B";
   const allBanks = ["KBank", "SCB", "KTB"];
   const usedBanks = (existingAccounts || []).map(a => a.bank);
   const availableBanks = allBanks.filter(b => !usedBanks.includes(b));
@@ -1424,6 +1438,9 @@ function AddAccountModal({ companyId, existingAccounts, onClose, onSave }) {
   const [openDate, setOpenDate] = useState("");
   const [monthlyFee, setMonthlyFee] = useState("8000");
   const [payout, setPayout] = useState("8000");
+  const [contractMonths, setContractMonths] = useState("6");
+  const [guaranteedMonths, setGuaranteedMonths] = useState("6");
+  const [compensationPrice, setCompensationPrice] = useState("15000");
   const [notes, setNotes] = useState("");
 
   const handleBank = (b) => setBank(b);
@@ -1435,6 +1452,9 @@ function AddAccountModal({ companyId, existingAccounts, onClose, onSave }) {
       openDate: status === "open" ? (openDate || new Date().toISOString().split("T")[0]) : "",
       monthlyFee: Number(monthlyFee) || 0,
       payout: Number(payout) || 0,
+      contractMonths: Number(contractMonths) || 6,
+      guaranteedMonths: Number(guaranteedMonths) || 6,
+      compensationPrice: Number(compensationPrice) || 15000,
       contractEnd: "",
       notes,
       blownDate: "",
@@ -1515,24 +1535,26 @@ function AddAccountModal({ companyId, existingAccounts, onClose, onSave }) {
           </div>
         )}
 
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 11, color: C.textDim, marginBottom: 6 }}>Monthly Fee (฿) — 客户付的月费</div>
-          <div style={{
-            display: "flex", alignItems: "center",
-            background: C.bg, borderRadius: 8,
-            border: `1px solid ${C.borderLight}`,
-          }}>
-            <span style={{ padding: "10px 0 10px 12px", color: C.textMuted, fontSize: 13 }}>฿</span>
-            <input type="text" inputMode="numeric" value={monthlyFee}
-              onChange={e => setMonthlyFee(e.target.value.replace(/[^0-9]/g, ""))}
-              style={{
-                flex: 1, background: "transparent", border: "none", outline: "none",
-                color: C.gold, fontSize: 16, fontWeight: 700, padding: "10px 8px",
-                fontFamily: "'Courier New', monospace",
-              }}
-            />
+        {!isGroupB && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 11, color: C.textDim, marginBottom: 6 }}>Monthly Fee (฿) — 客户付的月费</div>
+            <div style={{
+              display: "flex", alignItems: "center",
+              background: C.bg, borderRadius: 8,
+              border: `1px solid ${C.borderLight}`,
+            }}>
+              <span style={{ padding: "10px 0 10px 12px", color: C.textMuted, fontSize: 13 }}>฿</span>
+              <input type="text" inputMode="numeric" value={monthlyFee}
+                onChange={e => setMonthlyFee(e.target.value.replace(/[^0-9]/g, ""))}
+                style={{
+                  flex: 1, background: "transparent", border: "none", outline: "none",
+                  color: C.gold, fontSize: 16, fontWeight: 700, padding: "10px 8px",
+                  fontFamily: "'Courier New', monospace",
+                }}
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 11, color: C.textDim, marginBottom: 6 }}>Nominee Payout (฿) — 给人头的钱</div>
@@ -1552,6 +1574,61 @@ function AddAccountModal({ companyId, existingAccounts, onClose, onSave }) {
             />
           </div>
         </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 11, color: C.textDim, marginBottom: 6 }}>Contract (mo)</div>
+            <input type="text" inputMode="numeric" value={contractMonths}
+              onChange={e => setContractMonths(e.target.value.replace(/[^0-9]/g, ""))}
+              style={{
+                width: "100%", padding: "10px 12px", borderRadius: 8,
+                background: C.bg, border: `1px solid ${C.borderLight}`,
+                color: C.text, fontSize: 14, fontWeight: 700, outline: "none",
+                textAlign: "center",
+              }}
+            />
+            <div style={{ fontSize: 9, color: C.textMuted, marginTop: 4 }}>合约几个月</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: C.textDim, marginBottom: 6 }}>Payout保 (mo)</div>
+            <input type="text" inputMode="numeric" value={guaranteedMonths}
+              onChange={e => setGuaranteedMonths(e.target.value.replace(/[^0-9]/g, ""))}
+              style={{
+                width: "100%", padding: "10px 12px", borderRadius: 8,
+                background: C.bg, border: `1px solid ${C.borderLight}`,
+                color: C.orange, fontSize: 14, fontWeight: 700, outline: "none",
+                textAlign: "center",
+              }}
+            />
+            <div style={{ fontSize: 9, color: C.textMuted, marginTop: 4 }}>人头保几个月</div>
+          </div>
+        </div>
+
+        {isGroupB && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 11, color: C.textDim, marginBottom: 6 }}>
+              Compensation Price (฿) — 爆户补偿价
+            </div>
+            <div style={{
+              display: "flex", alignItems: "center",
+              background: C.bg, borderRadius: 8,
+              border: `1px solid ${C.borderLight}`,
+            }}>
+              <span style={{ padding: "10px 0 10px 12px", color: C.textMuted, fontSize: 13 }}>฿</span>
+              <input type="text" inputMode="numeric" value={compensationPrice}
+                onChange={e => setCompensationPrice(e.target.value.replace(/[^0-9]/g, ""))}
+                style={{
+                  flex: 1, background: "transparent", border: "none", outline: "none",
+                  color: C.red, fontSize: 16, fontWeight: 700, padding: "10px 8px",
+                  fontFamily: "'Courier New', monospace",
+                }}
+              />
+            </div>
+            <div style={{ fontSize: 9, color: C.textMuted, marginTop: 4 }}>
+              爆户后每月补偿
+            </div>
+          </div>
+        )}
 
         <div style={{ marginBottom: 18 }}>
           <div style={{ fontSize: 11, color: C.textDim, marginBottom: 6 }}>Notes (optional)</div>
@@ -1584,12 +1661,16 @@ function AddAccountModal({ companyId, existingAccounts, onClose, onSave }) {
 }
 
 // ============ EDIT ACCOUNT MODAL ============
-function EditAccountModal({ account, onClose, onSave }) {
+function EditAccountModal({ account, nomineeGroup, onClose, onSave }) {
+  const isGroupB = nomineeGroup === "B";
   const [status, setStatus] = useState(account.status);
   const [openDate, setOpenDate] = useState(account.openDate || "");
   const [blownDate, setBlownDate] = useState(account.blownDate || "");
   const [monthlyFee, setMonthlyFee] = useState(String(account.monthlyFee || 0));
   const [payout, setPayout] = useState(String(account.payout || 0));
+  const [contractMonths, setContractMonths] = useState(String(account.contractMonths || 6));
+  const [guaranteedMonths, setGuaranteedMonths] = useState(String(account.guaranteedMonths || 6));
+  const [compensationPrice, setCompensationPrice] = useState(String(account.compensationPrice || 15000));
   const [notes, setNotes] = useState(account.notes || "");
 
   const handleSave = () => {
@@ -1600,6 +1681,9 @@ function EditAccountModal({ account, onClose, onSave }) {
       blownDate: status === "blown" ? (blownDate || today) : "",
       monthlyFee: Number(monthlyFee) || 0,
       payout: Number(payout) || 0,
+      contractMonths: Number(contractMonths) || 6,
+      guaranteedMonths: Number(guaranteedMonths) || 6,
+      compensationPrice: Number(compensationPrice) || 15000,
       notes,
     });
   };
@@ -1672,24 +1756,26 @@ function EditAccountModal({ account, onClose, onSave }) {
           </div>
         )}
 
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 11, color: C.textDim, marginBottom: 6 }}>Monthly Fee (฿) — 客户付的月费</div>
-          <div style={{
-            display: "flex", alignItems: "center",
-            background: C.bg, borderRadius: 8,
-            border: `1px solid ${C.borderLight}`,
-          }}>
-            <span style={{ padding: "10px 0 10px 12px", color: C.textMuted, fontSize: 13 }}>฿</span>
-            <input type="text" inputMode="numeric" value={monthlyFee}
-              onChange={e => setMonthlyFee(e.target.value.replace(/[^0-9]/g, ""))}
-              style={{
-                flex: 1, background: "transparent", border: "none", outline: "none",
-                color: C.gold, fontSize: 16, fontWeight: 700, padding: "10px 8px",
-                fontFamily: "'Courier New', monospace",
-              }}
-            />
+        {!isGroupB && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 11, color: C.textDim, marginBottom: 6 }}>Monthly Fee (฿) — 客户付的月费</div>
+            <div style={{
+              display: "flex", alignItems: "center",
+              background: C.bg, borderRadius: 8,
+              border: `1px solid ${C.borderLight}`,
+            }}>
+              <span style={{ padding: "10px 0 10px 12px", color: C.textMuted, fontSize: 13 }}>฿</span>
+              <input type="text" inputMode="numeric" value={monthlyFee}
+                onChange={e => setMonthlyFee(e.target.value.replace(/[^0-9]/g, ""))}
+                style={{
+                  flex: 1, background: "transparent", border: "none", outline: "none",
+                  color: C.gold, fontSize: 16, fontWeight: 700, padding: "10px 8px",
+                  fontFamily: "'Courier New', monospace",
+                }}
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 11, color: C.textDim, marginBottom: 6 }}>Nominee Payout (฿) — 给人头的钱</div>
@@ -1712,6 +1798,61 @@ function EditAccountModal({ account, onClose, onSave }) {
             Will be prorated by days when account opens mid-month
           </div>
         </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 11, color: C.textDim, marginBottom: 6 }}>Contract (mo)</div>
+            <input type="text" inputMode="numeric" value={contractMonths}
+              onChange={e => setContractMonths(e.target.value.replace(/[^0-9]/g, ""))}
+              style={{
+                width: "100%", padding: "10px 12px", borderRadius: 8,
+                background: C.bg, border: `1px solid ${C.borderLight}`,
+                color: C.text, fontSize: 14, fontWeight: 700, outline: "none",
+                textAlign: "center",
+              }}
+            />
+            <div style={{ fontSize: 9, color: C.textMuted, marginTop: 4 }}>合约多少个月</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: C.textDim, marginBottom: 6 }}>Payout保 (mo)</div>
+            <input type="text" inputMode="numeric" value={guaranteedMonths}
+              onChange={e => setGuaranteedMonths(e.target.value.replace(/[^0-9]/g, ""))}
+              style={{
+                width: "100%", padding: "10px 12px", borderRadius: 8,
+                background: C.bg, border: `1px solid ${C.borderLight}`,
+                color: C.orange, fontSize: 14, fontWeight: 700, outline: "none",
+                textAlign: "center",
+              }}
+            />
+            <div style={{ fontSize: 9, color: C.textMuted, marginTop: 4 }}>人头保几个月</div>
+          </div>
+        </div>
+
+        {isGroupB && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 11, color: C.textDim, marginBottom: 6 }}>
+              Compensation Price (฿) — 爆户补偿价
+            </div>
+            <div style={{
+              display: "flex", alignItems: "center",
+              background: C.bg, borderRadius: 8,
+              border: `1px solid ${C.borderLight}`,
+            }}>
+              <span style={{ padding: "10px 0 10px 12px", color: C.textMuted, fontSize: 13 }}>฿</span>
+              <input type="text" inputMode="numeric" value={compensationPrice}
+                onChange={e => setCompensationPrice(e.target.value.replace(/[^0-9]/g, ""))}
+                style={{
+                  flex: 1, background: "transparent", border: "none", outline: "none",
+                  color: C.red, fontSize: 16, fontWeight: 700, padding: "10px 8px",
+                  fontFamily: "'Courier New', monospace",
+                }}
+              />
+            </div>
+            <div style={{ fontSize: 9, color: C.textMuted, marginTop: 4 }}>
+              爆户后每月补偿
+            </div>
+          </div>
+        )}
 
         <div style={{ marginBottom: 18 }}>
           <div style={{ fontSize: 11, color: C.textDim, marginBottom: 6 }}>Notes</div>
@@ -2129,6 +2270,15 @@ function nextMonth(yyyymm) {
 // In other words: each "month label" displays what's collected during/around that month
 // The shift is: month X row = full(X+1), except month M which adds the prorate
 
+// Helper: Get how many "month rows" since open date
+// Open month = row 1, next month = row 2, etc.
+function getMonthIndex(openDate, viewMonth) {
+  if (!openDate || !viewMonth) return 0;
+  const [oy, om] = openDate.substring(0, 7).split("-").map(Number);
+  const [vy, vm] = viewMonth.split("-").map(Number);
+  return (vy - oy) * 12 + (vm - om) + 1; // 1-indexed
+}
+
 function calcAccountIncome(account, viewMonth, group) {
   if (!account.openDate) return null;
   const openMonth = getMonth(account.openDate);
@@ -2136,23 +2286,59 @@ function calcAccountIncome(account, viewMonth, group) {
   // Account must have been opened by viewMonth
   if (viewMonth < openMonth) return null;
 
-  // Blown handling
-  if (account.status === "blown" && account.blownDate && getMonth(account.blownDate) < viewMonth) {
-    return null;
-  }
+  // Contract / guarantee config
+  const contractMonths = account.contractMonths || 6;
+  const guaranteedMonths = account.guaranteedMonths || 6;
+  const monthIndex = getMonthIndex(account.openDate, viewMonth);
+
+  // After contract ended → no more income
+  if (monthIndex > contractMonths) return null;
+
+  const isBlown = account.status === "blown" && account.blownDate;
+  const blownMonth = isBlown ? getMonth(account.blownDate) : null;
+
+  // Compensation = blown month or after
+  const isCompensation = isBlown && viewMonth >= blownMonth;
+
+  // Within guaranteed payout period?
+  const inGuarantee = monthIndex <= guaranteedMonths;
 
   if (group === "B") {
-    const netPrice = account.monthlyNetPrice?.[viewMonth];
-    if (netPrice === undefined || netPrice === null) {
-      return { income: 0, isProrate: false, fullPrice: 0, payout: 0, missingData: true, viewMonth };
-    }
-
-    // Prorate the nominee payout if this is the open month
     const dim = daysInMonth(viewMonth);
     const openDay = getDayOfMonth(account.openDate);
     const isOpenMonth = (viewMonth === openMonth);
-    const fullPayout = account.payout || 0;
 
+    // If account is blown and viewMonth >= blown month → compensation mode
+    if (isBlown && viewMonth >= blownMonth) {
+      const compPrice = account.compensationPrice || 15000;
+      const fullPayout = inGuarantee ? (account.payout || 0) : 0;
+
+      return {
+        income: compPrice,
+        isProrate: false,
+        payout: fullPayout,
+        viewMonth,
+        netPrice: compPrice,
+        fullPayout,
+        isOpenMonth: false,
+        prorateDays: 0,
+        daysInMonth: dim,
+        isCompensation: true,
+        compensationPrice: compPrice,
+        inGuarantee,
+        monthIndex,
+        contractMonths,
+        guaranteedMonths,
+      };
+    }
+
+    // Normal Group B logic (not blown)
+    const netPrice = account.monthlyNetPrice?.[viewMonth];
+    if (netPrice === undefined || netPrice === null) {
+      return { income: 0, isProrate: false, fullPrice: 0, payout: 0, missingData: true, viewMonth, isCompensation: false };
+    }
+
+    const fullPayout = inGuarantee ? (account.payout || 0) : 0;
     let proratedPayout = fullPayout;
     let prorateDays = 0;
     if (isOpenMonth) {
@@ -2170,34 +2356,49 @@ function calcAccountIncome(account, viewMonth, group) {
       isOpenMonth,
       prorateDays,
       daysInMonth: dim,
+      isCompensation: false,
+      inGuarantee,
+      monthIndex,
+      contractMonths,
+      guaranteedMonths,
     };
   }
 
-  // Group A logic — match Chester's sheet:
-  // Month X row = prorate(X if X is open month) + full(X+1)
+  // Group A logic
   const dim = daysInMonth(viewMonth);
   const openDay = getDayOfMonth(account.openDate);
   const isOpenMonth = (viewMonth === openMonth);
 
-  // Prorate days in current view month (only if it's the open month)
+  // Prorate days in current view month
   const prorateDays = isOpenMonth ? (dim - openDay + 1) : 0;
   const prorateAmount = isOpenMonth ? (account.monthlyFee * prorateDays) / dim : 0;
-  const proratePayout = isOpenMonth ? ((account.payout || 0) * prorateDays) / dim : 0;
+  const proratePayout = (isOpenMonth && inGuarantee) ? ((account.payout || 0) * prorateDays) / dim : 0;
 
-  // Full month of NEXT month (always added to current view month per Chester's sheet logic)
-  // BUT — only if the account is still active in that next month
-  const nm = nextMonth(viewMonth);
-  // If account was blown by next month's start, no full charge
-  let fullAmount = account.monthlyFee;
-  let fullPayout = account.payout || 0;
-  if (account.status === "blown" && account.blownDate && getMonth(account.blownDate) <= viewMonth) {
-    // Already blown — only the prorate counts
-    fullAmount = 0;
-    fullPayout = 0;
+  // For the LAST month of contract (month index = contractMonths),
+  // only collect the prorate portion of next month (until contract day)
+  const isLastMonth = monthIndex === contractMonths;
+
+  let fullAmount = 0;
+  let fullPayout = 0;
+
+  if (isLastMonth) {
+    // Last month: next month's full = open day's prorate
+    // e.g. open 3/5, contract 6 mo → last is 10月, next month full = 11月 prorate (1-3 = 3 days)
+    const nm = nextMonth(viewMonth);
+    const nmDays = daysInMonth(nm);
+    const partialDays = openDay - 1; // e.g. open day 3 → days 1-2 = 2 days... but we want 3 days for full coverage
+    // Actually: open date 3/5 → contract ends 3/11 → next month full row covers 1-3 of 11月 (3 days)
+    fullAmount = (account.monthlyFee * (openDay - 1)) / nmDays;
+    fullPayout = inGuarantee ? ((account.payout || 0) * (openDay - 1)) / nmDays : 0;
+  } else {
+    // Normal month: full next month
+    fullAmount = account.monthlyFee;
+    fullPayout = inGuarantee ? (account.payout || 0) : 0;
   }
 
   const totalIncome = prorateAmount + fullAmount;
   const totalPayout = proratePayout + fullPayout;
+  const nm = nextMonth(viewMonth);
 
   return {
     income: totalIncome,
@@ -2213,6 +2414,12 @@ function calcAccountIncome(account, viewMonth, group) {
     nomineePayout: account.payout || 0,
     viewMonth,
     nextMonthLabel: nm,
+    isCompensation,
+    inGuarantee,
+    monthIndex,
+    contractMonths,
+    guaranteedMonths,
+    isLastMonth,
   };
 }
 
@@ -2442,26 +2649,37 @@ function PayoutPage({ nominees, onUpdate }) {
 
 // ============ PAYOUT ROW (GROUP A) ============
 function PayoutRowA({ row, fmt }) {
-  const bankColors = { KBank: "#43A047", SCB: "#5E35B1", KTB: "#039BE5" };
+  const bankColors = { KBank: "#7cb87c", SCB: "#a87cb8", KTB: "#7aa6c9" };
 
   return (
     <div style={{
       padding: "12px",
-      background: C.bg, borderRadius: 8,
-      border: `1px solid ${C.border}`, marginBottom: 8,
+      background: row.isCompensation ? "rgba(201,122,122,0.05)" : C.bg,
+      borderRadius: 8,
+      border: `1px solid ${row.isCompensation ? C.red + "44" : C.border}`,
+      marginBottom: 8,
     }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
         <div style={{ width: 4, height: 24, background: bankColors[row.bank], borderRadius: 2 }} />
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>
             {row.nomineeName} · {row.bank}
           </div>
           <div style={{ fontSize: 10, color: C.textMuted }}>{row.companyName}</div>
         </div>
+        {row.isCompensation && (
+          <span style={{
+            fontSize: 9, fontWeight: 700, color: C.red,
+            background: "rgba(201,122,122,0.15)",
+            padding: "2px 6px", borderRadius: 3,
+          }}>
+            💥 爆户补偿
+          </span>
+        )}
         <span style={{
           fontSize: 9, fontWeight: 700,
           color: row.nomineeType === "old" ? C.orange : C.green,
-          background: row.nomineeType === "old" ? "rgba(255,167,38,0.15)" : "rgba(102,187,106,0.15)",
+          background: row.nomineeType === "old" ? "rgba(201,168,122,0.15)" : "rgba(124,184,124,0.15)",
           padding: "2px 6px", borderRadius: 3,
         }}>
           {row.nomineeType === "old" ? "OLD 6/4" : "NEW 5/5"}
@@ -2471,7 +2689,8 @@ function PayoutRowA({ row, fmt }) {
       {/* Breakdown */}
       <div style={{
         padding: "8px 10px", marginBottom: 8,
-        background: "rgba(79,195,247,0.05)", borderRadius: 6,
+        background: row.isCompensation ? "rgba(201,122,122,0.05)" : "rgba(122,166,201,0.05)",
+        borderRadius: 6,
         fontSize: 10, color: C.textDim,
       }}>
         {row.isOpenMonth && row.prorateAmount > 0 && (
@@ -2482,17 +2701,24 @@ function PayoutRowA({ row, fmt }) {
         )}
         {row.fullAmount > 0 && (
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-            <span>📅 {row.nextMonthLabel} full month</span>
+            <span>
+              📅 {row.nextMonthLabel} {row.isLastMonth ? "(contract end prorate)" : "full month"}
+            </span>
             <span style={{ color: C.text }}>{fmt(row.fullAmount)}</span>
           </div>
         )}
         {row.fullAmount === 0 && row.prorateAmount === 0 && (
-          <div style={{ color: C.red, fontStyle: "italic" }}>Account inactive this period</div>
+          <div style={{ color: C.textMuted, fontStyle: "italic" }}>No income this period</div>
         )}
         {(row.proratePayout + row.fullPayout) > 0 && (
           <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 4, borderTop: `1px solid ${C.border}` }}>
-            <span>− Nominee payout</span>
+            <span>− Nominee payout {row.inGuarantee ? "" : "(out of guarantee)"}</span>
             <span style={{ color: C.red }}>-{fmt(row.proratePayout + row.fullPayout)}</span>
+          </div>
+        )}
+        {row.monthIndex > 0 && (
+          <div style={{ marginTop: 4, fontSize: 9, color: C.textMuted, textAlign: "right" }}>
+            Month {row.monthIndex}/{row.contractMonths} · Guaranteed {row.guaranteedMonths}mo
           </div>
         )}
       </div>
@@ -2508,11 +2734,11 @@ function PayoutRowA({ row, fmt }) {
         </div>
         <div>
           <div style={{ color: C.textMuted, fontSize: 9 }}>DAXIX</div>
-          <div style={{ color: C.red, fontWeight: 700, fontSize: 12 }}>{fmt(row.daxix)}</div>
+          <div style={{ color: C.text, fontWeight: 700, fontSize: 12 }}>{fmt(row.daxix)}</div>
         </div>
         <div>
           <div style={{ color: C.textMuted, fontSize: 9 }}>Chester</div>
-          <div style={{ color: C.blue, fontWeight: 700, fontSize: 12 }}>{fmt(row.chester)}</div>
+          <div style={{ color: C.gold, fontWeight: 700, fontSize: 12 }}>{fmt(row.chester)}</div>
         </div>
       </div>
     </div>
@@ -2528,17 +2754,28 @@ function PayoutRowB({ row, selectedMonth, onUpdateNetPrice, fmt }) {
   return (
     <div style={{
       padding: "12px",
-      background: C.bg, borderRadius: 8,
-      border: `1px solid ${C.border}`, marginBottom: 8,
+      background: row.isCompensation ? "rgba(201,122,122,0.05)" : C.bg,
+      borderRadius: 8,
+      border: `1px solid ${row.isCompensation ? C.red + "44" : C.border}`,
+      marginBottom: 8,
     }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
         <div style={{ width: 4, height: 24, background: bankColors[row.bank], borderRadius: 2 }} />
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>
             {row.nomineeName} · {row.bank}
           </div>
           <div style={{ fontSize: 10, color: C.textMuted }}>{row.companyName}</div>
         </div>
+        {row.isCompensation && (
+          <span style={{
+            fontSize: 9, fontWeight: 700, color: C.red,
+            background: "rgba(201,122,122,0.15)",
+            padding: "2px 6px", borderRadius: 3,
+          }}>
+            💥 爆户补偿
+          </span>
+        )}
         <span style={{
           fontSize: 9, fontWeight: 700, color: C.gold,
           background: "rgba(212,175,55,0.15)",
@@ -2548,7 +2785,28 @@ function PayoutRowB({ row, selectedMonth, onUpdateNetPrice, fmt }) {
         </span>
       </div>
 
-      {editing || row.missingData ? (
+      {row.isCompensation ? (
+        <div style={{
+          padding: "8px 10px", marginBottom: 8,
+          background: "rgba(201,122,122,0.06)", borderRadius: 6,
+          fontSize: 10, border: `1px solid ${C.red}33`,
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: row.payout > 0 ? 4 : 0 }}>
+            <span style={{ color: C.textMuted }}>
+              💥 爆户补偿: <span style={{ color: C.red, fontWeight: 700 }}>{fmt(row.compensationPrice)}</span>
+            </span>
+            <span style={{ fontSize: 9, color: C.textMuted }}>
+              Month {row.monthIndex}/{row.contractMonths}
+            </span>
+          </div>
+          {row.payout > 0 && (
+            <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 4, borderTop: `1px solid ${C.border}` }}>
+              <span style={{ color: C.textMuted }}>− Nominee payout</span>
+              <span style={{ color: C.red }}>-{fmt(row.payout)}</span>
+            </div>
+          )}
+        </div>
+      ) : editing || row.missingData ? (
         <div style={{
           padding: "10px", marginBottom: 8,
           background: "rgba(212,175,55,0.06)", borderRadius: 6,
