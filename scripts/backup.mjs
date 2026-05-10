@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { writeFileSync, mkdirSync, existsSync } from 'fs';
+import { join } from 'path';
 import ws from 'ws';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -42,10 +43,7 @@ async function backup() {
     console.log(`  ✓ ${data.length} rows → ${filepath}`);
   }
 
-  // Write summary
   writeFileSync(join(backupDir, '_summary.json'), JSON.stringify(summary, null, 2));
-
-  // Update latest pointer
   writeFileSync('backups/_latest.json', JSON.stringify(summary, null, 2));
 
   console.log(`\n✅ Backup complete: ${backupDir}`);
