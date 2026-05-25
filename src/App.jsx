@@ -366,7 +366,11 @@ function Dashboard({ nominees, onNavigate }) {
     failed: allAccounts.filter(a => a.bank === bank && a.status === "failed").length,
   }));
   const totalOpen = accountsByBank.reduce((s, b) => s + b.open, 0);
-  const totalPending = accountsByBank.reduce((s, b) => s + b.pending, 0);
+  // KTB is hard to open — excluded from main pending count (still tracked separately)
+  const totalPending = accountsByBank
+    .filter(b => b.bank !== "KTB")
+    .reduce((s, b) => s + b.pending, 0);
+  const ktbPending = accountsByBank.find(b => b.bank === "KTB")?.pending || 0;
 
   // Companies stats
   const allCompanies = nominees.flatMap(n => n.companies || []);
@@ -383,11 +387,55 @@ function Dashboard({ nominees, onNavigate }) {
       </p>
 
       {/* Stats grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginBottom: 24 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginBottom: 16 }}>
         <StatCard label="Total Nominees" value={total} color={C.blue} icon="👥" />
         <StatCard label="Active Accounts" value={totalOpen} color={C.gold} icon="🏦" />
-        <StatCard label="Pending Accounts" value={totalPending} color={C.orange} icon="⏳" />
+        <StatCard label="Pending (excl. KTB)" value={totalPending} color={C.orange} icon="⏳" />
         <StatCard label="Companies (DBD)" value={`${companiesApproved}/${companiesPending + companiesApproved}`} color={C.green} icon="🏢" />
+      </div>
+
+      {/* Pending by Bank */}
+      <div style={{
+        background: C.card, borderRadius: 12, padding: 16,
+        border: `1px solid ${C.border}`, marginBottom: 16,
+      }}>
+        <div style={{ fontSize: 11, color: C.textDim, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 12 }}>
+          Pending by Bank
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+          {accountsByBank.map(b => {
+            const isKtb = b.bank === "KTB";
+            const bankColors = { KBank: "#7cb87c", SCB: "#a87cb8", KTB: "#7aa6c9" };
+            return (
+              <div key={b.bank} style={{
+                background: C.bg, borderRadius: 8, padding: "12px 10px",
+                border: `1px solid ${isKtb ? C.border : bankColors[b.bank] + "44"}`,
+                textAlign: "center",
+                opacity: isKtb ? 0.7 : 1,
+              }}>
+                <div style={{ fontSize: 10, color: bankColors[b.bank], fontWeight: 700, marginBottom: 4 }}>
+                  {b.bank}
+                </div>
+                <div style={{ fontSize: 24, fontWeight: 700, color: C.text, lineHeight: 1 }}>
+                  {b.pending}
+                </div>
+                <div style={{ fontSize: 8, color: C.textMuted, marginTop: 4 }}>
+                  {isKtb ? "试开中 · not counted" : "pending"}
+                </div>
+                {b.open > 0 && (
+                  <div style={{ fontSize: 9, color: C.green, marginTop: 3 }}>
+                    ✓ {b.open} open
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {ktbPending > 0 && (
+          <div style={{ fontSize: 9, color: C.textMuted, marginTop: 10, textAlign: "center" }}>
+            💡 KTB 难开，不算进主要 pending 统计 — 开到了直接按"开户"即可
+          </div>
+        )}
       </div>
 
       {/* Bank Summary */}
@@ -405,7 +453,14 @@ function Dashboard({ nominees, onNavigate }) {
               padding: "12px 0", borderBottom: `1px solid ${C.border}`,
             }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <div style={{ fontSize: 13, color: C.text, fontWeight: 700 }}>{b.bank}</div>
+                <div style={{ fontSize: 13, color: C.text, fontWeight: 700 }}>
+                  {b.bank}
+                  {b.bank === "KTB" && (
+                    <span style={{ fontSize: 9, color: C.textMuted, fontWeight: 400, marginLeft: 6 }}>
+                      · 试开中
+                    </span>
+                  )}
+                </div>
                 <div style={{ fontSize: 11, color: C.textDim }}>
                   {b.open} of {total} open
                 </div>
