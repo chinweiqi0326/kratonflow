@@ -2555,11 +2555,244 @@ function PayoutPage({ nominees, onUpdate }) {
     onUpdate(nomineeId, { companies: newCompanies });
   };
 
+  const exportPDF = () => {
+    const f = (n) => "฿" + Math.round(n).toLocaleString("en-US");
+    const allRows = [...groupARows, ...groupBRows];
+    const today = new Date();
+    const dateStr = today.toLocaleDateString("en-GB");
+
+    const renderRow = (r, idx) => {
+      const breakdown = r.group === "A"
+        ? `${r.isOpenMonth && r.prorateAmount > 0 ? `${r.viewMonth} prorate (${r.prorateDays}/${r.daysInMonth}d) ${f(r.prorateAmount)}<br>` : ""}${r.fullAmount > 0 ? `${r.nextMonthLabel} ${r.isLastMonth ? "(contract end prorate)" : "full month"} ${f(r.fullAmount)}` : ""}`
+        : r.isCompensation
+          ? `<span style="color:#c97a7a">💥 爆户补偿 ${f(r.compensationPrice)}</span>`
+          : `Net price ${f(r.netPrice)}`;
+      const payoutText = (r.payout > 0) ? `Nominee payout: -${f(r.payout)}` : "No payout";
+
+      return `
+        <tr style="border-bottom:1px solid #ddd;">
+          <td style="padding:8px;vertical-align:top;font-size:11px;">${idx + 1}</td>
+          <td style="padding:8px;vertical-align:top;">
+            <div style="font-weight:700;font-size:12px;">${r.nomineeName} · ${r.bank}</div>
+            <div style="font-size:10px;color:#666;">${r.companyName} · ${r.nomineeType === "old" ? "OLD 6/4" : "NEW 5/5"}${r.isCompensation ? " · 💥" : ""}</div>
+            <div style="font-size:10px;color:#888;margin-top:4px;">${breakdown}</div>
+            <div style="font-size:10px;color:#c97a7a;">${payoutText}</div>
+          </td>
+          <td style="padding:8px;text-align:right;font-weight:700;color:#D4AF37;font-size:12px;">${f(r.income)}</td>
+          <td style="padding:8px;text-align:right;font-size:11px;">${f(r.income - r.payout)}</td>
+          <td style="padding:8px;text-align:right;font-weight:700;font-size:12px;">${f(r.daxix)}</td>
+          <td style="padding:8px;text-align:right;font-weight:700;color:#D4AF37;font-size:12px;">${f(r.chester)}</td>
+        </tr>
+      `;
+    };
+
+    // DAXIX breakdown by account
+    const daxixRows = allRows.filter(r => r.daxix > 0).map((r, idx) => `
+      <tr style="border-bottom:1px solid #eee;">
+        <td style="padding:6px;font-size:11px;">${idx + 1}</td>
+        <td style="padding:6px;font-size:11px;">${r.nomineeName} · ${r.bank}${r.isCompensation ? " 💥" : ""}</td>
+        <td style="padding:6px;font-size:10px;color:#666;">${r.companyName}</td>
+        <td style="padding:6px;text-align:right;font-weight:700;font-size:11px;">${f(r.daxix)}</td>
+      </tr>
+    `).join("");
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>Kraton Flow · Payout ${selectedMonth}</title>
+        <style>
+          @page { margin: 15mm; size: A4; }
+          body { font-family: -apple-system, system-ui, sans-serif; color: #000; padding: 0; margin: 0; }
+          h1 { font-size: 18px; margin: 0 0 4px 0; letter-spacing: 1px; }
+          .sub { font-size: 11px; color: #666; margin-bottom: 18px; }
+          .total-box {
+            background: #f8f4e6; border: 2px solid #D4AF37; border-radius: 8px;
+            padding: 14px; margin-bottom: 20px; display: flex; justify-content: space-around;
+          }
+          .total-item { text-align: center; }
+          .total-label { font-size: 10px; color: #666; letter-spacing: 1px; text-transform: uppercase; }
+          .total-value { font-size: 18px; font-weight: 700; margin-top: 4px; }
+          .section-title {
+            font-size: 12px; font-weight: 700; letter-spacing: 1.5px; color: #666;
+            text-transform: uppercase; margin: 20px 0 8px 0;
+            border-bottom: 1px solid #ccc; padding-bottom: 4px;
+          }
+          table { width: 100%; border-collapse: collapse; font-size: 11px; }
+          th { background: #f0f0f0; padding: 8px; text-align: left; font-size: 10px;
+               color: #555; text-transform: uppercase; letter-spacing: 0.5px;
+               border-bottom: 2px solid #ccc; }
+          th.right { text-align: right; }
+          .daxix-box {
+            background: #fff5f5; border: 2px solid #c97a7a; border-radius: 8px;
+            padding: 14px; margin-top: 30px;
+          }
+          .daxix-header { font-size: 12px; font-weight: 700; color: #c97a7a;
+                          letter-spacing: 1px; margin-bottom: 10px; }
+          .daxix-total-row { background: #c97a7a; color: white; }
+          .footer { margin-top: 30px; padding-top: 12px; border-top: 1px solid #ddd;
+                    font-size: 9px; color: #999; text-align: center; }
+          .page-break { page-break-before: always; }
+          .no-print { padding: 12px; text-align: center; background: #f8f4e6; }
+          .no-print button {
+            padding: 12px 24px; background: #D4AF37; color: white; border: none;
+            border-radius: 6px; font-weight: 700; font-size: 14px; cursor: pointer;
+            margin: 0 8px;
+          }
+          @media print { .no-print { display: none; } }
+        </style>
+      </head>
+      <body>
+        <div class="no-print">
+          <button onclick="window.print()">📄 Save as PDF / Print</button>
+          <button onclick="window.close()" style="background:#666;">Close</button>
+        </div>
+
+        <div style="padding: 20px 24px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #D4AF37;padding-bottom:10px;margin-bottom:14px;">
+            <div>
+              <div style="font-size:10px;letter-spacing:2px;color:#D4AF37;">KRATON FLOW</div>
+              <h1>PAYOUT REPORT</h1>
+              <div class="sub">Month: ${selectedMonth} · Generated: ${dateStr}</div>
+            </div>
+            <div style="font-size:10px;color:#999;text-align:right;">
+              ${allRows.length} account${allRows.length !== 1 ? "s" : ""}
+            </div>
+          </div>
+
+          <div class="total-box">
+            <div class="total-item">
+              <div class="total-label">Total Income</div>
+              <div class="total-value" style="color:#D4AF37;">${f(grandTotal)}</div>
+            </div>
+            <div class="total-item">
+              <div class="total-label">DAXIX</div>
+              <div class="total-value" style="color:#c97a7a;">${f(grandDaxix)}</div>
+            </div>
+            <div class="total-item">
+              <div class="total-label">Chester</div>
+              <div class="total-value" style="color:#1a73e8;">${f(grandChester)}</div>
+            </div>
+          </div>
+
+          ${groupARows.length > 0 ? `
+            <div class="section-title">Group A · Fixed Fee (${groupARows.length})</div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:30px;">#</th>
+                  <th>Account</th>
+                  <th class="right">Income</th>
+                  <th class="right">Net</th>
+                  <th class="right">DAXIX</th>
+                  <th class="right">Chester</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${groupARows.map(renderRow).join("")}
+                <tr style="background:#fafafa;font-weight:700;">
+                  <td colspan="2" style="padding:8px;">Group A Subtotal</td>
+                  <td style="padding:8px;text-align:right;color:#D4AF37;">${f(groupATotalIncome)}</td>
+                  <td style="padding:8px;text-align:right;">${f(groupATotalIncome - groupARows.reduce((s, r) => s + r.payout, 0))}</td>
+                  <td style="padding:8px;text-align:right;">${f(groupATotalDaxix)}</td>
+                  <td style="padding:8px;text-align:right;color:#D4AF37;">${f(groupATotalChester)}</td>
+                </tr>
+              </tbody>
+            </table>
+          ` : ""}
+
+          ${groupBRows.length > 0 ? `
+            <div class="section-title">Group B · Net Price (${groupBRows.length})</div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:30px;">#</th>
+                  <th>Account</th>
+                  <th class="right">Income</th>
+                  <th class="right">Net</th>
+                  <th class="right">DAXIX</th>
+                  <th class="right">Chester</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${groupBRows.map(renderRow).join("")}
+                <tr style="background:#fafafa;font-weight:700;">
+                  <td colspan="2" style="padding:8px;">Group B Subtotal</td>
+                  <td style="padding:8px;text-align:right;color:#D4AF37;">${f(groupBTotalIncome)}</td>
+                  <td style="padding:8px;text-align:right;">${f(groupBTotalIncome - groupBRows.reduce((s, r) => s + r.payout, 0))}</td>
+                  <td style="padding:8px;text-align:right;">${f(groupBTotalDaxix)}</td>
+                  <td style="padding:8px;text-align:right;color:#D4AF37;">${f(groupBTotalChester)}</td>
+                </tr>
+              </tbody>
+            </table>
+          ` : ""}
+
+          <div class="page-break"></div>
+
+          <div class="daxix-box">
+            <div class="daxix-header">💰 DAXIX SUMMARY · ${selectedMonth}</div>
+            <div style="font-size:10px;color:#666;margin-bottom:12px;">
+              Total amount due to DAXIX for the month of ${selectedMonth}
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:30px;">#</th>
+                  <th>Nominee · Bank</th>
+                  <th>Company</th>
+                  <th class="right">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${daxixRows}
+                <tr class="daxix-total-row">
+                  <td colspan="3" style="padding:10px;font-weight:700;">TOTAL DUE TO DAXIX</td>
+                  <td style="padding:10px;text-align:right;font-weight:700;font-size:14px;">${f(grandDaxix)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="footer">
+            Kraton Flow TH · Internal Document · ${dateStr}<br>
+            This is an automatically generated payout report. Confidential.
+          </div>
+        </div>
+
+        <script>
+          // Auto-show print dialog after a brief delay
+          setTimeout(() => { /* user can click button */ }, 100);
+        </script>
+      </body>
+      </html>
+    `;
+
+    const win = window.open("", "_blank");
+    if (!win) {
+      alert("Please allow popups to export PDF");
+      return;
+    }
+    win.document.write(html);
+    win.document.close();
+  };
+
   return (
     <div>
-      <h2 style={{ fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 4 }}>
-        Payout
-      </h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
+        <h2 style={{ fontSize: 22, fontWeight: 700, color: C.text }}>
+          Payout
+        </h2>
+        <button onClick={exportPDF}
+          style={{
+            padding: "8px 14px", borderRadius: 8,
+            background: C.gold, color: C.bg,
+            border: "none", fontSize: 11, fontWeight: 700,
+            cursor: "pointer", letterSpacing: 0.5,
+          }}>
+          📄 Export PDF
+        </button>
+      </div>
       <p style={{ fontSize: 13, color: C.textDim, marginBottom: 16 }}>
         Each row = month's prorate + next month's full
       </p>
