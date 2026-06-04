@@ -2555,243 +2555,360 @@ function PayoutPage({ nominees, onUpdate }) {
     onUpdate(nomineeId, { companies: newCompanies });
   };
 
-  const exportPDF = () => {
-    const f = (n) => "฿" + Math.round(n).toLocaleString("en-US");
-    const allRows = [...groupARows, ...groupBRows];
-    const today = new Date();
-    const dateStr = today.toLocaleDateString("en-GB");
+  const [exportMode, setExportMode] = useState("all");
+  const [isExporting, setIsExporting] = useState(false);
 
-    const renderRow = (r, idx) => {
-      const breakdown = r.group === "A"
-        ? `${r.isOpenMonth && r.prorateAmount > 0 ? `${r.viewMonth} prorate (${r.prorateDays}/${r.daysInMonth}d) ${f(r.prorateAmount)}<br>` : ""}${r.fullAmount > 0 ? `${r.nextMonthLabel} ${r.isLastMonth ? "(contract end prorate)" : "full month"} ${f(r.fullAmount)}` : ""}`
-        : r.isCompensation
-          ? `<span style="color:#c97a7a">💥 爆户补偿 ${f(r.compensationPrice)}</span>`
-          : `Net price ${f(r.netPrice)}`;
-      const payoutText = (r.payout > 0) ? `Nominee payout: -${f(r.payout)}` : "No payout";
+  // Load jsPDF + autotable from CDN (cached after first load)
+  const loadJsPDF = () => {
+    return new Promise((resolve, reject) => {
+      if (window.jspdf && window.jspdf.jsPDF) {
+        resolve(window.jspdf.jsPDF);
+        return;
+      }
+      const s1 = document.createElement("script");
+      s1.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+      s1.onload = () => {
+        const s2 = document.createElement("script");
+        s2.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js";
+        s2.onload = () => resolve(window.jspdf.jsPDF);
+        s2.onerror = reject;
+        document.head.appendChild(s2);
+      };
+      s1.onerror = reject;
+      document.head.appendChild(s1);
+    });
+  };
 
-      return `
-        <tr style="border-bottom:1px solid #ddd;">
-          <td style="padding:8px;vertical-align:top;font-size:11px;">${idx + 1}</td>
-          <td style="padding:8px;vertical-align:top;">
-            <div style="font-weight:700;font-size:12px;">${r.nomineeName} · ${r.bank}</div>
-            <div style="font-size:10px;color:#666;">${r.companyName} · ${r.nomineeType === "old" ? "OLD 6/4" : "NEW 5/5"}${r.isCompensation ? " · 💥" : ""}</div>
-            <div style="font-size:10px;color:#888;margin-top:4px;">${breakdown}</div>
-            <div style="font-size:10px;color:#c97a7a;">${payoutText}</div>
-          </td>
-          <td style="padding:8px;text-align:right;font-weight:700;color:#D4AF37;font-size:12px;">${f(r.income)}</td>
-          <td style="padding:8px;text-align:right;font-size:11px;">${f(r.income - r.payout)}</td>
-          <td style="padding:8px;text-align:right;font-weight:700;font-size:12px;">${f(r.daxix)}</td>
-          <td style="padding:8px;text-align:right;font-weight:700;color:#D4AF37;font-size:12px;">${f(r.chester)}</td>
-        </tr>
-      `;
+  const fmtNum = (n) => Math.round(n).toLocaleString("en-US");
+  const fmtBaht = (n) => "THB " + fmtNum(n);
+
+  const exportPDFAll = async (jsPDF) => {
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    const pageW = 210;
+    let y = 15;
+
+    // Header
+    doc.setFillColor(212, 175, 55);
+    doc.rect(0, 0, pageW, 4, "F");
+
+    doc.setFontSize(9);
+    doc.setTextColor(150, 120, 30);
+    doc.text("KRATON FLOW", 15, 14);
+
+    doc.setFontSize(18);
+    doc.setTextColor(20, 20, 20);
+    doc.setFont(undefined, "bold");
+    doc.text("PAYOUT REPORT", 15, 22);
+
+    doc.setFontSize(10);
+    doc.setFont(undefined, "normal");
+    doc.setTextColor(120, 120, 120);
+    const today = new Date().toLocaleDateString("en-GB");
+    doc.text(`Month: ${selectedMonth}  |  Generated: ${today}`, 15, 28);
+
+    const totalAccts = groupARows.length + groupBRows.length;
+    doc.setFontSize(9);
+    doc.text(`${totalAccts} account${totalAccts !== 1 ? "s" : ""}`, pageW - 15, 22, { align: "right" });
+
+    y = 36;
+
+    // Grand Total box
+    doc.setFillColor(250, 244, 220);
+    doc.setDrawColor(212, 175, 55);
+    doc.setLineWidth(0.5);
+    doc.roundedRect(15, y, pageW - 30, 22, 2, 2, "FD");
+
+    doc.setFontSize(7);
+    doc.setTextColor(120, 120, 120);
+    doc.text("TOTAL INCOME", 30, y + 7, { align: "center" });
+    doc.text("DAXIX", pageW / 2, y + 7, { align: "center" });
+    doc.text("CHESTER", pageW - 30, y + 7, { align: "center" });
+
+    doc.setFontSize(14);
+    doc.setFont(undefined, "bold");
+    doc.setTextColor(180, 140, 30);
+    doc.text(fmtBaht(grandTotal), 30, y + 16, { align: "center" });
+    doc.setTextColor(201, 122, 122);
+    doc.text(fmtBaht(grandDaxix), pageW / 2, y + 16, { align: "center" });
+    doc.setTextColor(26, 115, 232);
+    doc.text(fmtBaht(grandChester), pageW - 30, y + 16, { align: "center" });
+
+    y += 30;
+
+    // Helper to build account label
+    const buildLabel = (r) => {
+      const parts = [`${r.nomineeName}`, r.bank];
+      const sub = `${r.companyName} | ${r.nomineeType === "old" ? "OLD 6/4" : "NEW 5/5"}${r.isCompensation ? " | Compensation" : ""}`;
+      return parts.join(" | ") + "\n" + sub;
     };
 
-    // DAXIX breakdown by account
-    const daxixRows = allRows.filter(r => r.daxix > 0).map((r, idx) => `
-      <tr style="border-bottom:1px solid #eee;">
-        <td style="padding:6px;font-size:11px;">${idx + 1}</td>
-        <td style="padding:6px;font-size:11px;">${r.nomineeName} · ${r.bank}${r.isCompensation ? " 💥" : ""}</td>
-        <td style="padding:6px;font-size:10px;color:#666;">${r.companyName}</td>
-        <td style="padding:6px;text-align:right;font-weight:700;font-size:11px;">${f(r.daxix)}</td>
-      </tr>
-    `).join("");
+    const buildBreakdown = (r) => {
+      if (r.group === "A") {
+        const parts = [];
+        if (r.isOpenMonth && r.prorateAmount > 0) {
+          parts.push(`${r.viewMonth} prorate (${r.prorateDays}/${r.daysInMonth}d): ${fmtBaht(r.prorateAmount)}`);
+        }
+        if (r.fullAmount > 0) {
+          parts.push(`${r.nextMonthLabel} ${r.isLastMonth ? "(contract end)" : "full"}: ${fmtBaht(r.fullAmount)}`);
+        }
+        return parts.join("\n");
+      }
+      return r.isCompensation ? `Compensation: ${fmtBaht(r.compensationPrice)}` : `Net: ${fmtBaht(r.netPrice)}`;
+    };
 
-    const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <title>Kraton Flow · Payout ${selectedMonth}</title>
-        <style>
-          @page { margin: 15mm; size: A4; }
-          body { font-family: -apple-system, system-ui, sans-serif; color: #000; padding: 0; margin: 0; }
-          h1 { font-size: 18px; margin: 0 0 4px 0; letter-spacing: 1px; }
-          .sub { font-size: 11px; color: #666; margin-bottom: 18px; }
-          .total-box {
-            background: #f8f4e6; border: 2px solid #D4AF37; border-radius: 8px;
-            padding: 14px; margin-bottom: 20px; display: flex; justify-content: space-around;
+    const renderTable = (title, rows, subtotal) => {
+      if (rows.length === 0) return;
+
+      doc.setFontSize(10);
+      doc.setFont(undefined, "bold");
+      doc.setTextColor(100, 100, 100);
+      doc.text(title.toUpperCase(), 15, y);
+      doc.setDrawColor(200, 200, 200);
+      doc.line(15, y + 2, pageW - 15, y + 2);
+      y += 5;
+
+      const body = rows.map((r, i) => [
+        String(i + 1),
+        buildLabel(r) + "\n" + buildBreakdown(r) + (r.payout > 0 ? `\nPayout: -${fmtBaht(r.payout)}` : ""),
+        fmtBaht(r.income),
+        fmtBaht(r.income - r.payout),
+        fmtBaht(r.daxix),
+        fmtBaht(r.chester),
+      ]);
+
+      // Subtotal row
+      body.push([
+        "",
+        "Subtotal",
+        fmtBaht(subtotal.income),
+        fmtBaht(subtotal.net),
+        fmtBaht(subtotal.daxix),
+        fmtBaht(subtotal.chester),
+      ]);
+
+      doc.autoTable({
+        startY: y,
+        head: [["#", "Account", "Income", "Net", "DAXIX", "Chester"]],
+        body,
+        theme: "grid",
+        styles: { fontSize: 8, cellPadding: 2, lineColor: [220, 220, 220], lineWidth: 0.1 },
+        headStyles: { fillColor: [240, 240, 240], textColor: [80, 80, 80], fontSize: 8, fontStyle: "bold" },
+        columnStyles: {
+          0: { cellWidth: 8, halign: "center" },
+          1: { cellWidth: 75 },
+          2: { halign: "right", textColor: [180, 140, 30] },
+          3: { halign: "right" },
+          4: { halign: "right" },
+          5: { halign: "right", textColor: [26, 115, 232] },
+        },
+        didParseCell: (data) => {
+          // Bold the subtotal row
+          if (data.row.index === body.length - 1) {
+            data.cell.styles.fillColor = [248, 248, 248];
+            data.cell.styles.fontStyle = "bold";
           }
-          .total-item { text-align: center; }
-          .total-label { font-size: 10px; color: #666; letter-spacing: 1px; text-transform: uppercase; }
-          .total-value { font-size: 18px; font-weight: 700; margin-top: 4px; }
-          .section-title {
-            font-size: 12px; font-weight: 700; letter-spacing: 1.5px; color: #666;
-            text-transform: uppercase; margin: 20px 0 8px 0;
-            border-bottom: 1px solid #ccc; padding-bottom: 4px;
-          }
-          table { width: 100%; border-collapse: collapse; font-size: 11px; }
-          th { background: #f0f0f0; padding: 8px; text-align: left; font-size: 10px;
-               color: #555; text-transform: uppercase; letter-spacing: 0.5px;
-               border-bottom: 2px solid #ccc; }
-          th.right { text-align: right; }
-          .daxix-box {
-            background: #fff5f5; border: 2px solid #c97a7a; border-radius: 8px;
-            padding: 14px; margin-top: 30px;
-          }
-          .daxix-header { font-size: 12px; font-weight: 700; color: #c97a7a;
-                          letter-spacing: 1px; margin-bottom: 10px; }
-          .daxix-total-row { background: #c97a7a; color: white; }
-          .footer { margin-top: 30px; padding-top: 12px; border-top: 1px solid #ddd;
-                    font-size: 9px; color: #999; text-align: center; }
-          .page-break { page-break-before: always; }
-          .no-print { padding: 12px; text-align: center; background: #f8f4e6; }
-          .no-print button {
-            padding: 12px 24px; background: #D4AF37; color: white; border: none;
-            border-radius: 6px; font-weight: 700; font-size: 14px; cursor: pointer;
-            margin: 0 8px;
-          }
-          @media print { .no-print { display: none; } }
-        </style>
-      </head>
-      <body>
-        <div class="no-print">
-          <button onclick="window.print()">📄 Save as PDF / Print</button>
-          <button onclick="window.close()" style="background:#666;">Close</button>
-        </div>
+        },
+        margin: { left: 15, right: 15 },
+      });
 
-        <div style="padding: 20px 24px;">
-          <div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #D4AF37;padding-bottom:10px;margin-bottom:14px;">
-            <div>
-              <div style="font-size:10px;letter-spacing:2px;color:#D4AF37;">KRATON FLOW</div>
-              <h1>PAYOUT REPORT</h1>
-              <div class="sub">Month: ${selectedMonth} · Generated: ${dateStr}</div>
-            </div>
-            <div style="font-size:10px;color:#999;text-align:right;">
-              ${allRows.length} account${allRows.length !== 1 ? "s" : ""}
-            </div>
-          </div>
+      y = doc.lastAutoTable.finalY + 8;
+    };
 
-          <div class="total-box">
-            <div class="total-item">
-              <div class="total-label">Total Income</div>
-              <div class="total-value" style="color:#D4AF37;">${f(grandTotal)}</div>
-            </div>
-            <div class="total-item">
-              <div class="total-label">DAXIX</div>
-              <div class="total-value" style="color:#c97a7a;">${f(grandDaxix)}</div>
-            </div>
-            <div class="total-item">
-              <div class="total-label">Chester</div>
-              <div class="total-value" style="color:#1a73e8;">${f(grandChester)}</div>
-            </div>
-          </div>
-
-          ${groupARows.length > 0 ? `
-            <div class="section-title">Group A · Fixed Fee (${groupARows.length})</div>
-            <table>
-              <thead>
-                <tr>
-                  <th style="width:30px;">#</th>
-                  <th>Account</th>
-                  <th class="right">Income</th>
-                  <th class="right">Net</th>
-                  <th class="right">DAXIX</th>
-                  <th class="right">Chester</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${groupARows.map(renderRow).join("")}
-                <tr style="background:#fafafa;font-weight:700;">
-                  <td colspan="2" style="padding:8px;">Group A Subtotal</td>
-                  <td style="padding:8px;text-align:right;color:#D4AF37;">${f(groupATotalIncome)}</td>
-                  <td style="padding:8px;text-align:right;">${f(groupATotalIncome - groupARows.reduce((s, r) => s + r.payout, 0))}</td>
-                  <td style="padding:8px;text-align:right;">${f(groupATotalDaxix)}</td>
-                  <td style="padding:8px;text-align:right;color:#D4AF37;">${f(groupATotalChester)}</td>
-                </tr>
-              </tbody>
-            </table>
-          ` : ""}
-
-          ${groupBRows.length > 0 ? `
-            <div class="section-title">Group B · Net Price (${groupBRows.length})</div>
-            <table>
-              <thead>
-                <tr>
-                  <th style="width:30px;">#</th>
-                  <th>Account</th>
-                  <th class="right">Income</th>
-                  <th class="right">Net</th>
-                  <th class="right">DAXIX</th>
-                  <th class="right">Chester</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${groupBRows.map(renderRow).join("")}
-                <tr style="background:#fafafa;font-weight:700;">
-                  <td colspan="2" style="padding:8px;">Group B Subtotal</td>
-                  <td style="padding:8px;text-align:right;color:#D4AF37;">${f(groupBTotalIncome)}</td>
-                  <td style="padding:8px;text-align:right;">${f(groupBTotalIncome - groupBRows.reduce((s, r) => s + r.payout, 0))}</td>
-                  <td style="padding:8px;text-align:right;">${f(groupBTotalDaxix)}</td>
-                  <td style="padding:8px;text-align:right;color:#D4AF37;">${f(groupBTotalChester)}</td>
-                </tr>
-              </tbody>
-            </table>
-          ` : ""}
-
-          <div class="page-break"></div>
-
-          <div class="daxix-box">
-            <div class="daxix-header">💰 DAXIX SUMMARY · ${selectedMonth}</div>
-            <div style="font-size:10px;color:#666;margin-bottom:12px;">
-              Total amount due to DAXIX for the month of ${selectedMonth}
-            </div>
-            <table>
-              <thead>
-                <tr>
-                  <th style="width:30px;">#</th>
-                  <th>Nominee · Bank</th>
-                  <th>Company</th>
-                  <th class="right">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${daxixRows}
-                <tr class="daxix-total-row">
-                  <td colspan="3" style="padding:10px;font-weight:700;">TOTAL DUE TO DAXIX</td>
-                  <td style="padding:10px;text-align:right;font-weight:700;font-size:14px;">${f(grandDaxix)}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <div class="footer">
-            Kraton Flow TH · Internal Document · ${dateStr}<br>
-            This is an automatically generated payout report. Confidential.
-          </div>
-        </div>
-
-        <script>
-          // Auto-show print dialog after a brief delay
-          setTimeout(() => { /* user can click button */ }, 100);
-        </script>
-      </body>
-      </html>
-    `;
-
-    const win = window.open("", "_blank");
-    if (!win) {
-      alert("Please allow popups to export PDF");
-      return;
+    if (groupARows.length > 0) {
+      renderTable(`Group A - Fixed Fee (${groupARows.length})`, groupARows, {
+        income: groupATotalIncome,
+        net: groupATotalIncome - groupARows.reduce((s, r) => s + r.payout, 0),
+        daxix: groupATotalDaxix,
+        chester: groupATotalChester,
+      });
     }
-    win.document.write(html);
-    win.document.close();
+
+    if (groupBRows.length > 0) {
+      if (y > 240) { doc.addPage(); y = 15; }
+      renderTable(`Group B - Net Price (${groupBRows.length})`, groupBRows, {
+        income: groupBTotalIncome,
+        net: groupBTotalIncome - groupBRows.reduce((s, r) => s + r.payout, 0),
+        daxix: groupBTotalDaxix,
+        chester: groupBTotalChester,
+      });
+    }
+
+    // Footer on each page
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7);
+      doc.setTextColor(160, 160, 160);
+      doc.text("Kraton Flow TH | Internal Confidential | " + today, pageW / 2, 290, { align: "center" });
+      doc.text(`Page ${i} / ${pageCount}`, pageW - 15, 290, { align: "right" });
+    }
+
+    doc.save(`Kraton-Payout-ALL-${selectedMonth}.pdf`);
+  };
+
+  const exportPDFDaxix = async (jsPDF) => {
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    const pageW = 210;
+    let y = 15;
+
+    // Header (different color for DAXIX version)
+    doc.setFillColor(201, 122, 122);
+    doc.rect(0, 0, pageW, 4, "F");
+
+    doc.setFontSize(9);
+    doc.setTextColor(160, 80, 80);
+    doc.text("KRATON FLOW", 15, 14);
+
+    doc.setFontSize(18);
+    doc.setTextColor(20, 20, 20);
+    doc.setFont(undefined, "bold");
+    doc.text("PAYOUT - DAXIX", 15, 22);
+
+    doc.setFontSize(10);
+    doc.setFont(undefined, "normal");
+    doc.setTextColor(120, 120, 120);
+    const today = new Date().toLocaleDateString("en-GB");
+    doc.text(`Month: ${selectedMonth}  |  Generated: ${today}`, 15, 28);
+
+    y = 36;
+
+    // DAXIX rows only (filter out 0)
+    const daxixRows = [...groupARows, ...groupBRows].filter(r => r.daxix > 0);
+
+    const totalNomineePayouts = daxixRows.reduce((s, r) => s + r.payout, 0);
+    const totalCommission = daxixRows.reduce((s, r) => s + (r.daxix - r.payout), 0);
+    const totalDaxix = totalNomineePayouts + totalCommission;
+
+    // Total box
+    doc.setFillColor(253, 245, 245);
+    doc.setDrawColor(201, 122, 122);
+    doc.setLineWidth(0.5);
+    doc.roundedRect(15, y, pageW - 30, 30, 2, 2, "FD");
+
+    doc.setFontSize(8);
+    doc.setTextColor(120, 120, 120);
+    doc.text("NOMINEE PAYOUTS", 40, y + 7, { align: "center" });
+    doc.text("DAXIX COMMISSION", pageW / 2, y + 7, { align: "center" });
+    doc.text("TOTAL", pageW - 40, y + 7, { align: "center" });
+
+    doc.setFontSize(12);
+    doc.setFont(undefined, "bold");
+    doc.setTextColor(80, 80, 80);
+    doc.text(fmtBaht(totalNomineePayouts), 40, y + 15, { align: "center" });
+    doc.text(fmtBaht(totalCommission), pageW / 2, y + 15, { align: "center" });
+    doc.setTextColor(201, 80, 80);
+    doc.setFontSize(14);
+    doc.text(fmtBaht(totalDaxix), pageW - 40, y + 15, { align: "center" });
+
+    doc.setFontSize(7);
+    doc.setTextColor(150, 150, 150);
+    doc.setFont(undefined, "normal");
+    doc.text("(to forward to nominees)", 40, y + 22, { align: "center" });
+    doc.text("(DAXIX keeps)", pageW / 2, y + 22, { align: "center" });
+    doc.text("(due to DAXIX)", pageW - 40, y + 22, { align: "center" });
+
+    y += 38;
+
+    // Table — DAXIX breakdown
+    const body = daxixRows.map((r, i) => {
+      const commission = r.daxix - r.payout;
+      return [
+        String(i + 1),
+        `${r.nomineeName}\n${r.bank} | ${r.companyName}${r.isCompensation ? " | Compensation" : ""}`,
+        fmtBaht(r.payout),
+        fmtBaht(commission),
+        fmtBaht(r.daxix),
+      ];
+    });
+
+    // Total row
+    body.push([
+      "",
+      "TOTAL DUE TO DAXIX",
+      fmtBaht(totalNomineePayouts),
+      fmtBaht(totalCommission),
+      fmtBaht(totalDaxix),
+    ]);
+
+    doc.autoTable({
+      startY: y,
+      head: [["#", "Account", "Nominee Payout", "DAXIX Commission", "Subtotal"]],
+      body,
+      theme: "grid",
+      styles: { fontSize: 9, cellPadding: 3, lineColor: [220, 220, 220], lineWidth: 0.1 },
+      headStyles: { fillColor: [240, 240, 240], textColor: [80, 80, 80], fontSize: 8, fontStyle: "bold" },
+      columnStyles: {
+        0: { cellWidth: 10, halign: "center" },
+        1: { cellWidth: 70 },
+        2: { halign: "right", textColor: [120, 120, 120] },
+        3: { halign: "right", textColor: [80, 80, 80] },
+        4: { halign: "right", fontStyle: "bold", textColor: [201, 80, 80] },
+      },
+      didParseCell: (data) => {
+        if (data.row.index === body.length - 1) {
+          data.cell.styles.fillColor = [201, 122, 122];
+          data.cell.styles.textColor = [255, 255, 255];
+          data.cell.styles.fontStyle = "bold";
+          data.cell.styles.fontSize = 10;
+        }
+      },
+      margin: { left: 15, right: 15 },
+    });
+
+    // Footer
+    doc.setFontSize(7);
+    doc.setTextColor(160, 160, 160);
+    doc.text(`Kraton Flow TH | For DAXIX | ${today}`, pageW / 2, 290, { align: "center" });
+
+    doc.save(`Kraton-Payout-DAXIX-${selectedMonth}.pdf`);
+  };
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      const jsPDF = await loadJsPDF();
+      if (exportMode === "all") {
+        await exportPDFAll(jsPDF);
+      } else if (exportMode === "daxix") {
+        await exportPDFDaxix(jsPDF);
+      }
+    } catch (e) {
+      alert("PDF export failed: " + e.message);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4, gap: 8 }}>
         <h2 style={{ fontSize: 22, fontWeight: 700, color: C.text }}>
           Payout
         </h2>
-        <button onClick={exportPDF}
-          style={{
-            padding: "8px 14px", borderRadius: 8,
-            background: C.gold, color: C.bg,
-            border: "none", fontSize: 11, fontWeight: 700,
-            cursor: "pointer", letterSpacing: 0.5,
-          }}>
-          📄 Export PDF
-        </button>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <select value={exportMode} onChange={e => setExportMode(e.target.value)}
+            style={{
+              padding: "8px 10px", borderRadius: 8,
+              background: C.bg, color: C.text,
+              border: `1px solid ${C.borderLight}`,
+              fontSize: 11, fontWeight: 600, outline: "none",
+              cursor: "pointer",
+            }}>
+            <option value="all">All</option>
+            <option value="daxix">DAXIX</option>
+          </select>
+          <button onClick={handleExport} disabled={isExporting}
+            style={{
+              padding: "8px 14px", borderRadius: 8,
+              background: isExporting ? C.border : C.gold,
+              color: isExporting ? C.textMuted : C.bg,
+              border: "none", fontSize: 11, fontWeight: 700,
+              cursor: isExporting ? "wait" : "pointer", letterSpacing: 0.5,
+              whiteSpace: "nowrap",
+            }}>
+            {isExporting ? "..." : "📄 Export PDF"}
+          </button>
+        </div>
       </div>
       <p style={{ fontSize: 13, color: C.textDim, marginBottom: 16 }}>
         Each row = month's prorate + next month's full
