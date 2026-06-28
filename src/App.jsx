@@ -98,7 +98,8 @@ async function syncCompanies(nomineeId, companies) {
   // Delete removed companies
   const toDelete = [...existingIds].filter(id => !newIds.has(id));
   if (toDelete.length > 0) {
-    await supabase.from("companies").delete().in("id", toDelete);
+    const { error: delErr } = await supabase.from("companies").delete().in("id", toDelete);
+    if (delErr) throw new Error("Delete companies failed: " + delErr.message);
   }
 
   // Upsert all current companies
@@ -110,16 +111,20 @@ async function syncCompanies(nomineeId, companies) {
       dbd_approve_date: c.dbdApproveDate || null,
       status: c.status, position: i,
     };
-    await supabase.from("companies").upsert(row);
+    const { error: compErr } = await supabase.from("companies").upsert(row);
+    if (compErr) throw new Error("Upsert company '" + c.name + "' failed: " + compErr.message);
 
     // Sync accounts for this company
-    const { data: existingAccs } = await supabase
+    const { data: existingAccs, error: accFetchErr } = await supabase
       .from("accounts").select("id").eq("company_id", c.id);
+    if (accFetchErr) throw new Error("Fetch accounts failed: " + accFetchErr.message);
+
     const existingAccIds = new Set((existingAccs || []).map(a => a.id));
     const newAccIds = new Set((c.accounts || []).map(a => a.id));
     const accsToDelete = [...existingAccIds].filter(id => !newAccIds.has(id));
     if (accsToDelete.length > 0) {
-      await supabase.from("accounts").delete().in("id", accsToDelete);
+      const { error: accDelErr } = await supabase.from("accounts").delete().in("id", accsToDelete);
+      if (accDelErr) throw new Error("Delete accounts failed: " + accDelErr.message);
     }
     for (const a of (c.accounts || [])) {
       const accRow = {
@@ -136,7 +141,8 @@ async function syncCompanies(nomineeId, companies) {
         monthly_net_price: a.monthlyNetPrice || {},
         prorate_claimed_months: a.prorateClaimedMonths || {},
       };
-      await supabase.from("accounts").upsert(accRow);
+      const { error: accUpErr } = await supabase.from("accounts").upsert(accRow);
+      if (accUpErr) throw new Error("Upsert account " + a.bank + " failed: " + accUpErr.message);
     }
   }
 }
@@ -3449,7 +3455,10 @@ export default function App() {
         await syncCompanies(id, updates.companies);
       }
     } catch (e) {
-      setError("Save failed: " + e.message);
+      console.error("Save error details:", e);
+      const errMsg = e?.message || e?.error_description || JSON.stringify(e);
+      setError("Save failed: " + errMsg);
+      alert("⚠️ Save failed: " + errMsg + "\n\nData reverted. Please try again or screenshot this and tell Chester.");
       reloadNominees();
     }
   };
