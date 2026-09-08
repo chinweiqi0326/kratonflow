@@ -2445,12 +2445,13 @@ function calcAccountIncome(account, viewMonth, group) {
   if (isLastMonth) {
     // Last month: next month's full = open day's prorate
     // e.g. open 3/5, contract 6 mo → last is 10月, next month full = 11月 prorate (1-3 = 3 days)
+    // Contract-end month covers day 1 → openDay INCLUSIVE (activation day counts).
+    // e.g. open 21/3, 6mo → last row = Sep 1-21 = 21 days
     const nm = nextMonth(viewMonth);
     const nmDays = daysInMonth(nm);
-    const partialDays = openDay - 1; // e.g. open day 3 → days 1-2 = 2 days... but we want 3 days for full coverage
-    // Actually: open date 3/5 → contract ends 3/11 → next month full row covers 1-3 of 11月 (3 days)
-    fullAmount = (account.monthlyFee * (openDay - 1)) / nmDays;
-    fullPayout = inGuarantee ? ((account.payout || 0) * (openDay - 1)) / nmDays : 0;
+    const partialDays = openDay;
+    fullAmount = (account.monthlyFee * partialDays) / nmDays;
+    fullPayout = inGuarantee ? ((account.payout || 0) * partialDays) / nmDays : 0;
   } else {
     // Normal month: full next month
     fullAmount = account.monthlyFee;
@@ -2481,13 +2482,17 @@ function calcAccountIncome(account, viewMonth, group) {
     contractMonths,
     guaranteedMonths,
     isLastMonth,
+    lastMonthDays: isLastMonth ? openDay : 0,
+    lastMonthDim: isLastMonth ? daysInMonth(nextMonth(viewMonth)) : 0,
   };
 }
 
 // ============ PAYOUT PAGE ============
 function PayoutPage({ nominees, onUpdate }) {
+  // Default = previous month (月初付上月账)
   const today = new Date();
-  const defaultMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const prev = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+  const defaultMonth = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`;
   const [selectedMonth, setSelectedMonth] = useState(defaultMonth);
 
   const groupARows = [];
@@ -2925,7 +2930,10 @@ function PayoutPage({ nominees, onUpdate }) {
         background: C.card, borderRadius: 12, padding: 16,
         border: `1px solid ${C.border}`, marginBottom: 16,
       }}>
-        <div style={{ fontSize: 11, color: C.textDim, marginBottom: 8 }}>Select Month</div>
+        <div style={{ fontSize: 11, color: C.textDim, marginBottom: 8 }}>
+          Select Month
+          <span style={{ fontSize: 9, color: C.textMuted, marginLeft: 8 }}>· 默认上个月（月初付上月账）</span>
+        </div>
         <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}
           style={{
             width: "100%", padding: "10px 12px", borderRadius: 8,
@@ -3113,7 +3121,7 @@ function PayoutRowA({ row, fmt }) {
         {row.fullAmount > 0 && (
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
             <span>
-              📅 {row.nextMonthLabel} {row.isLastMonth ? "(contract end prorate)" : "full month"}
+              📅 {row.nextMonthLabel} {row.isLastMonth ? `(contract end ${row.lastMonthDays}/${row.lastMonthDim}d)` : "full month"}
             </span>
             <span style={{ color: C.text }}>{fmt(row.fullAmount)}</span>
           </div>
