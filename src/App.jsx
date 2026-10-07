@@ -177,6 +177,25 @@ const regions = [
   { id: "chiang_mai", name: "Chiang Mai", color: "#c9a87a" },
 ];
 
+// Preset banks (user can also type a custom name)
+const BANKS = [
+  { name: "KBank",    color: "#7cb87c" },
+  { name: "SCB",      color: "#a87cb8" },
+  { name: "KTB",      color: "#7aa6c9" },
+  { name: "Krungsri", color: "#c9a87a" },
+  { name: "BBL",      color: "#7ab8c9" },
+  { name: "TTB",      color: "#b87c7c" },
+  { name: "GSB",      color: "#c97ab8" },
+];
+const BANK_FALLBACK_COLORS = ["#d4af37", "#7cb87c", "#a87cb8", "#7aa6c9", "#c9a87a", "#7ab8c9", "#b87c7c", "#c97ab8"];
+function getBankColor(name) {
+  const hit = BANKS.find(b => b.name === name);
+  if (hit) return hit.color;
+  // deterministic colour for custom names
+  let h = 0; for (const ch of String(name || "")) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return BANK_FALLBACK_COLORS[h % BANK_FALLBACK_COLORS.length];
+}
+
 const emptyDocs = {
   icFrontOri: false, icBackOri: false, houseRegOri: false,
   icCopySign: false, houseRegCopySign: false, videoSelfie: false, scbDoc: false,
@@ -365,7 +384,14 @@ function Dashboard({ nominees, onNavigate }) {
 
   // Bank/account stats across all nominees
   const allAccounts = nominees.flatMap(n => (n.companies || []).flatMap(c => c.accounts || []));
-  const accountsByBank = ["KBank", "SCB", "KTB"].map(bank => ({
+  const bankNamesInUse = Array.from(new Set(
+    nominees.flatMap(n => (n.companies || []).flatMap(c => (c.accounts || []).map(a => a.bank)))
+  ));
+  const orderedBanks = [
+    ...BANKS.map(b => b.name).filter(b => bankNamesInUse.includes(b)),
+    ...bankNamesInUse.filter(b => !BANKS.some(x => x.name === b)),
+  ];
+  const accountsByBank = (orderedBanks.length ? orderedBanks : ["KBank", "SCB", "KTB"]).map(bank => ({
     bank,
     open: allAccounts.filter(a => a.bank === bank && a.status === "open").length,
     pending: allAccounts.filter(a => a.bank === bank && a.status === "pending").length,
@@ -408,10 +434,10 @@ function Dashboard({ nominees, onNavigate }) {
         <div style={{ fontSize: 11, color: C.textDim, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 12 }}>
           Pending by Bank
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(accountsByBank.length, 4)}, 1fr)`, gap: 8 }}>
           {accountsByBank.map(b => {
             const isKtb = b.bank === "KTB";
-            const bankColors = { KBank: "#7cb87c", SCB: "#a87cb8", KTB: "#7aa6c9" };
+            const bankColors = new Proxy({}, { get: (_, k) => getBankColor(k) });
             return (
               <div key={b.bank} style={{
                 background: C.bg, borderRadius: 8, padding: "12px 10px",
@@ -1374,7 +1400,7 @@ function CompanyCard({ company, index, onUpdate, onRemove, onAddAccount, onEditA
 
 // ============ ACCOUNT ROW ============
 function AccountRow({ account, onEdit, onRemove }) {
-  const bankColors = { KBank: "#7cb87c", SCB: "#a87cb8", KTB: "#7aa6c9" };
+  const bankColors = new Proxy({}, { get: (_, k) => getBankColor(k) });
 
   // Calculate days running for open accounts
   let daysRunning = null;
@@ -1490,11 +1516,14 @@ function AddCompanyModal({ onClose, onSave, nomineeName }) {
 // ============ ADD ACCOUNT MODAL ============
 function AddAccountModal({ companyId, existingAccounts, nomineeGroup, onClose, onSave }) {
   const isGroupB = nomineeGroup === "B";
-  const allBanks = ["KBank", "SCB", "KTB"];
+  const allBanks = BANKS.map(b => b.name);
   const usedBanks = (existingAccounts || []).map(a => a.bank);
   const availableBanks = allBanks.filter(b => !usedBanks.includes(b));
 
   const [bank, setBank] = useState(availableBanks[0] || "KBank");
+  const [customBank, setCustomBank] = useState("");
+  const [useCustom, setUseCustom] = useState(false);
+  const effectiveBank = useCustom ? customBank.trim() : bank;
   const [status, setStatus] = useState("pending");
   const [openDate, setOpenDate] = useState("");
   const [monthlyFee, setMonthlyFee] = useState("8000");
@@ -1507,8 +1536,10 @@ function AddAccountModal({ companyId, existingAccounts, nomineeGroup, onClose, o
   const handleBank = (b) => setBank(b);
 
   const handleSave = () => {
+    if (!effectiveBank) { alert("Please choose or type a bank name"); return; }
+    if (usedBanks.includes(effectiveBank)) { alert(effectiveBank + " already exists in this company"); return; }
     onSave({
-      bank,
+      bank: effectiveBank,
       status,
       openDate: status === "open" ? (openDate || new Date().toISOString().split("T")[0]) : "",
       monthlyFee: Number(monthlyFee) || 0,
@@ -1540,18 +1571,19 @@ function AddAccountModal({ companyId, existingAccounts, nomineeGroup, onClose, o
 
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 11, color: C.textDim, marginBottom: 6 }}>Bank</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
             {allBanks.map(b => {
               const used = usedBanks.includes(b);
+              const sel = !useCustom && bank === b;
               return (
-                <button key={b} onClick={() => !used && handleBank(b)}
+                <button key={b} onClick={() => { if (!used) { setUseCustom(false); handleBank(b); } }}
                   disabled={used}
                   style={{
-                    padding: "10px 8px", borderRadius: 6,
-                    background: bank === b ? C.gold : C.bg,
-                    border: `1px solid ${bank === b ? C.gold : C.border}`,
-                    color: bank === b ? C.bg : (used ? C.textMuted : C.text),
-                    fontSize: 12, fontWeight: 700,
+                    padding: "10px 4px", borderRadius: 6,
+                    background: sel ? C.gold : C.bg,
+                    border: `1px solid ${sel ? C.gold : C.border}`,
+                    color: sel ? C.bg : (used ? C.textMuted : C.text),
+                    fontSize: 11, fontWeight: 700,
                     cursor: used ? "not-allowed" : "pointer",
                     opacity: used ? 0.4 : 1,
                   }}>
@@ -1559,7 +1591,28 @@ function AddAccountModal({ companyId, existingAccounts, nomineeGroup, onClose, o
                 </button>
               );
             })}
+            <button onClick={() => setUseCustom(true)}
+              style={{
+                padding: "10px 4px", borderRadius: 6,
+                background: useCustom ? C.gold : C.bg,
+                border: `1px dashed ${useCustom ? C.gold : C.border}`,
+                color: useCustom ? C.bg : C.textDim,
+                fontSize: 11, fontWeight: 700, cursor: "pointer",
+              }}>
+              + Custom
+            </button>
           </div>
+          {useCustom && (
+            <input type="text" value={customBank} autoFocus
+              onChange={e => setCustomBank(e.target.value)}
+              placeholder="Type bank name (e.g. UOB, Kiatnakin)"
+              style={{
+                width: "100%", marginTop: 8, padding: "10px 12px", borderRadius: 8,
+                background: C.bg, border: `1px solid ${C.borderLight}`,
+                color: C.text, fontSize: 13, outline: "none",
+              }}
+            />
+          )}
         </div>
 
         <div style={{ marginBottom: 14 }}>
@@ -1733,10 +1786,13 @@ function EditAccountModal({ account, nomineeGroup, onClose, onSave }) {
   const [guaranteedMonths, setGuaranteedMonths] = useState(String(account.guaranteedMonths || 6));
   const [compensationPrice, setCompensationPrice] = useState(String(account.compensationPrice || 15000));
   const [notes, setNotes] = useState(account.notes || "");
+  const [bankName, setBankName] = useState(account.bank || "");
 
   const handleSave = () => {
     const today = new Date().toISOString().split("T")[0];
+    if (!bankName.trim()) { alert("Bank name cannot be empty"); return; }
     onSave({
+      bank: bankName.trim(),
       status,
       openDate: status === "open" || status === "blown" ? (openDate || today) : "",
       blownDate: status === "blown" ? (blownDate || today) : "",
@@ -1765,6 +1821,33 @@ function EditAccountModal({ account, nomineeGroup, onClose, onSave }) {
         </div>
         <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 16 }}>
           Update account details
+        </div>
+
+        {/* Bank name */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 11, color: C.textDim, marginBottom: 6 }}>Bank</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+            {BANKS.map(b => (
+              <button key={b.name} onClick={() => setBankName(b.name)}
+                style={{
+                  padding: "6px 10px", borderRadius: 6,
+                  background: bankName === b.name ? b.color + "33" : C.bg,
+                  border: `1px solid ${bankName === b.name ? b.color : C.border}`,
+                  color: bankName === b.name ? b.color : C.textDim,
+                  fontSize: 10, fontWeight: 700, cursor: "pointer",
+                }}>
+                {b.name}
+              </button>
+            ))}
+          </div>
+          <input type="text" value={bankName} onChange={e => setBankName(e.target.value)}
+            placeholder="Or type custom bank name"
+            style={{
+              width: "100%", padding: "10px 12px", borderRadius: 8,
+              background: C.bg, border: `1px solid ${C.borderLight}`,
+              color: C.text, fontSize: 13, outline: "none",
+            }}
+          />
         </div>
 
         {/* Status */}
@@ -3068,7 +3151,7 @@ function PayoutPage({ nominees, onUpdate }) {
 
 // ============ PAYOUT ROW (GROUP A) ============
 function PayoutRowA({ row, fmt }) {
-  const bankColors = { KBank: "#7cb87c", SCB: "#a87cb8", KTB: "#7aa6c9" };
+  const bankColors = new Proxy({}, { get: (_, k) => getBankColor(k) });
 
   return (
     <div style={{
@@ -3166,7 +3249,7 @@ function PayoutRowA({ row, fmt }) {
 
 // ============ PAYOUT ROW (GROUP B) ============
 function PayoutRowB({ row, selectedMonth, onUpdateNetPrice, fmt }) {
-  const bankColors = { KBank: "#7cb87c", SCB: "#a87cb8", KTB: "#7aa6c9" };
+  const bankColors = new Proxy({}, { get: (_, k) => getBankColor(k) });
   const [editing, setEditing] = useState(row.missingData || false);
   const netPrice = row.netPrice || 0;
 
